@@ -4,10 +4,19 @@ const createError = require('http-errors');
 const logger = require('morgan');
 const sassMiddleware = require('node-sass-middleware');
 const serveFavicon = require('serve-favicon');
+const expressSession = require('express-session');
+const connectMongo = require('connect-mongo');
+const mongoose = require('mongoose');
+const deserializerUser = require('./middleware/authorizedAcess');
+const bindUserDocumentToResponseLocals = require('./middleware/datas');
 
 const indexRouter = require('./routes/index');
+const authenticationRouter = require('./routes/authentication');
+
+const mongoStore = connectMongo(expressSession);
 
 const app = express();
+
 
 // Setup view engine
 app.set('views', join(__dirname, 'views'));
@@ -28,15 +37,36 @@ app.use(
   })
 );
 
-app.use('/', indexRouter);
+app.use(expressSession({
+  secret: 'abc',
+  resave: true,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 15 * 24 * 60 * 60 * 1000
+  },
+  store: new mongoStore({
+    mongooseConnection: mongoose.connection,
+    ttl: 60 * 60
+  })
+})
+);
 
+app.use(deserializerUser);
+app.use(bindUserDocumentToResponseLocals);
+
+
+app.use('/', indexRouter);
+app.use('/authentication', authenticationRouter);
 // Catch missing routes and forward to error handler
 app.use((req, res, next) => {
   next(createError(404));
 });
 
+
+
+
 // Catch all error handler
-app.use((error, req, res, next) => {
+app.use((error, req, res) => {
   // Set error information, with stack only available in development
   res.locals.message = error.message;
   res.locals.error = req.app.get('env') === 'development' ? error : {};
